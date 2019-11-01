@@ -24,9 +24,11 @@ def listdir_nohidden(path):
               help='Path to folder containing files that are going to be uploaded.')
 @click.option('--creds_file', default='creds/mycreds.txt',
               help='Name of the file containing credentials needed to authorize the app.')
+@click.option('--notebook', is_flag=True,
+              help='Whether to upload jupyter notebook.')
 @click.option('--notebook_training', default='KNN_tSNE.ipynb',
               help='Name of the notebook with model training.')
-def upload(clients_secrets_path, files_folder, creds_file, notebook_training):
+def upload(clients_secrets_path, files_folder, creds_file, notebook, notebook_training):
     # Login to Google Drive and create drive object
     try:
         GoogleAuth.DEFAULT_SETTINGS["client_config_file"] = str(clients_secrets_path)
@@ -65,10 +67,11 @@ def upload(clients_secrets_path, files_folder, creds_file, notebook_training):
             file_drive.SetContentString(f.read())
             file_drive.Upload()
         print(f"The file: {fn} has been uploaded")
-    file_train = drive.CreateFile({'title': notebook_training})
-    file_train.SetContentFile(notebook_training)
-    file_train.Upload()
-    print(f"The file: {notebook_training} has been uploaded")
+    if notebook:
+        file_train = drive.CreateFile({'title': notebook_training})
+        file_train.SetContentFile(notebook_training)
+        file_train.Upload()
+        print(f"The file: {notebook_training} has been uploaded")
 
 
 if __name__ == '__main__':
