@@ -17,7 +17,7 @@ class FeatureExtractor:
         self.device = device
 
     def extract_features(self, dataset):
-        model = self._prepare_model()
+        model = self.prepare_model()
         image_codes = np.zeros((len(dataset), self.n_features))
         y_codes = np.zeros(len(dataset))
         for index, data in enumerate(dataset):
@@ -30,6 +30,6 @@ class FeatureExtractor:
             y_codes[index] = label
         return image_codes, y_codes
 
-    def _prepare_model(self):
+    def prepare_model(self):
         new_model = list(self.model.children())[:-self.n_remove_layers]
         return nn.Sequential(*new_model).to(self.device)

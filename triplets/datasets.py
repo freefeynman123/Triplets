@@ -1,6 +1,7 @@
 import math
 from collections import defaultdict
 
+from PIL import Image
 import torch
 import torch.utils.data as data
 
@@ -25,7 +26,7 @@ class TripletDataset(data.IterableDataset):
     positive are samples of the same class, and negative is a sample of another class.
     TripletDataset reads fram Dataset `dset` where `dset[i]` returns (sample_path, class_idx).
     Args:
-        dset (Dataset): Dataset object where __getitem__ returns (sample_path, class_idx) tuple.
+        dataset (Dataset): Dataset object where __getitem__ returns (sample_path, class_idx) tuple.
         num_triplets (int): Number of triplets to generate before raising StopIteration.
         groups (list[int]): list where the ith entry is the group_id of the ith sample in dset.
         transform (callable, optional): A function/transform that takes in
@@ -36,13 +37,14 @@ class TripletDataset(data.IterableDataset):
     https://github.com/pytorch/vision/pull/1061/files
     """
 
-    def __init__(self, dataset, num_triplets, groups, transform=None):
+    def __init__(self, dataset, num_triplets, groups, device, transform=None):
         super(TripletDataset, self).__init__()
         assert len(dataset) == len(groups)
-        self.dset = dataset
+        self.dataset = dataset
         self.num_triplets = num_triplets
-        self.transform = transform
         self.groups = create_groups(groups)
+        self.device = device
+        self.transform = transform
 
     def __iter__(self):
         worker_info = data.get_worker_info()
@@ -54,6 +56,9 @@ class TripletDataset(data.IterableDataset):
                 num_iters = self.num_triplets - num_iters * worker_info.id
 
         return (self.load(self.generate_triplet()) for _ in range(num_iters))
+
+    def __len__(self):
+        return len(self.dataset)
 
     def generate_triplet(self):
         """Generates a triplet from bins of samples
@@ -70,8 +75,10 @@ class TripletDataset(data.IterableDataset):
 
     def load(self, triplet_idxs):
         anc_idx, pos_idx, neg_idx = triplet_idxs
-        triplet = (self.dset[anc_idx], self.dset[pos_idx], self.dset[neg_idx])
         if self.transform is not None:
-            triplet = self.transform(triplet)
+            anc = self.transform(self.dataset[anc_idx][0]).to(self.device)
+            pos = self.transform(self.dataset[pos_idx][0]).to(self.device)
+            neg = self.transform(self.dataset[neg_idx][0]).to(self.device)
+        triplet = (anc, pos, neg)
 
         return triplet
