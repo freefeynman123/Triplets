@@ -1,84 +1,79 @@
-import math
-from collections import defaultdict
-
+import numpy as np
 from PIL import Image
-import torch
-import torch.utils.data as data
+
+from torch.utils.data import Dataset
 
 
-def create_groups(groups):
-    """Bins sample indices with respect to groups
-    Args:
-        groups (list[int]): where ith index stores ith sample's group id
-    Returns:
-        defaultdict[list]: Bins of sample indices, binned by group_idx
+class TripletSVHN(Dataset):
     """
-    group_samples = defaultdict(list)
-    for sample_idx, group_idx in enumerate(groups):
-        group_samples[group_idx].append(sample_idx)
+    Based on https://github.com/adambielski/siamese-triplet
 
-    return group_samples
-
-
-class TripletDataset(data.IterableDataset):
-    """
-    A dataset with samples of the form (anchor, positive, negative), where anchor and
-    positive are samples of the same class, and negative is a sample of another class.
-    TripletDataset reads fram Dataset `dset` where `dset[i]` returns (sample_path, class_idx).
-    Args:
-        dataset (Dataset): Dataset object where __getitem__ returns (sample_path, class_idx) tuple.
-        num_triplets (int): Number of triplets to generate before raising StopIteration.
-        groups (list[int]): list where the ith entry is the group_id of the ith sample in dset.
-        transform (callable, optional): A function/transform that takes in
-            a sample and returns a transformed version.
-            E.g, ``transforms.RandomCrop`` for images.
-
-    Taken from currently closed PR to implement generic triplet dataset:
-    https://github.com/pytorch/vision/pull/1061/files
+    Train: For each sample (anchor) randomly chooses a positive and negative samples
+    Test: Creates fixed triplets for testing
     """
 
-    def __init__(self, dataset, num_triplets, groups, device, transform=None):
-        super(TripletDataset, self).__init__()
-        assert len(dataset) == len(groups)
+    def __init__(self, dataset, indices_train, indices_test, transform, phase, seed):
         self.dataset = dataset
-        self.num_triplets = num_triplets
-        self.groups = create_groups(groups)
-        self.device = device
+        self.indices_train = indices_train
+        self.indices_test = indices_test
         self.transform = transform
+        self.phase = phase
+        self.seed = seed
 
-    def __iter__(self):
-        worker_info = data.get_worker_info()
-        if worker_info is None:
-            num_iters = self.num_triplets
+        if self.phase == 'train':
+            self.train_labels = self.dataset.labels[self.indices_train]
+            self.train_data = self.dataset.data[self.indices_train]
+            self.labels_set = set(self.train_labels)
+            self.label_to_indices = {label: np.where(self.train_labels == label)[0]
+                                     for label in self.labels_set}
+
         else:
-            num_iters = int(math.ceil(self.num_triplets / float(worker_info.num_workers)))
-            if worker_info.id == worker_info.num_workers - 1:
-                num_iters = self.num_triplets - num_iters * worker_info.id
+            self.test_labels = self.dataset.labels[self.indices_test]
+            self.test_data = self.dataset.data[self.indices_test]
+            # generate fixed triplets for testing
+            self.labels_set = set(self.test_labels)
+            self.label_to_indices = {label: np.where(self.test_labels == label)[0]
+                                     for label in self.labels_set}
 
-        return (self.load(self.generate_triplet()) for _ in range(num_iters))
+            random_state = np.random.RandomState(self.seed)
+
+            triplets = [[i,
+                         random_state.choice(self.label_to_indices[self.test_labels[i].item()]),
+                         random_state.choice(self.label_to_indices[
+                                                 np.random.choice(
+                                                     list(self.labels_set - set([self.test_labels[i].item()]))
+                                                 )
+                                             ])
+                         ]
+                        for i in range(len(self.test_data))]
+            self.test_triplets = triplets
+
+    def __getitem__(self, index):
+        if self.phase == 'train':
+            img1, label1 = self.train_data[index], self.train_labels[index].item()
+            positive_index = index
+            while positive_index == index:
+                positive_index = np.random.choice(self.label_to_indices[label1])
+            negative_label = np.random.choice(list(self.labels_set - set([label1])))
+            negative_index = np.random.choice(self.label_to_indices[negative_label])
+            img2 = self.train_data[positive_index]
+            img3 = self.train_data[negative_index]
+        else:
+            img1 = self.test_data[self.test_triplets[index][0]]
+            img2 = self.test_data[self.test_triplets[index][1]]
+            img3 = self.test_data[self.test_triplets[index][2]]
+
+        img1 = Image.fromarray(np.moveaxis(img1, 0, 2))
+        img2 = Image.fromarray(np.moveaxis(img2, 0, 2))
+        img3 = Image.fromarray(np.moveaxis(img3, 0, 2))
+        if self.transform is not None:
+            img1 = self.transform(img1)
+            img2 = self.transform(img2)
+            img3 = self.transform(img3)
+        return (img1, img2, img3), []
 
     def __len__(self):
-        return len(self.dataset)
-
-    def generate_triplet(self):
-        """Generates a triplet from bins of samples
-        Returns:
-            tuple(int): triplet of the form (anchor, positive, negative)
-        """
-        pos_cls, neg_cls = torch.multinomial(torch.ones(len(self.groups)), 2).tolist()
-        pos_samples, neg_samples = self.groups[pos_cls], self.groups[neg_cls]
-
-        anc_idx, pos_idx = torch.multinomial(torch.ones(len(pos_samples)), 2).tolist()
-        neg_idx = torch.multinomial(torch.ones(len(neg_samples)), 1).item()
-
-        return pos_samples[anc_idx], pos_samples[pos_idx], neg_samples[neg_idx]
-
-    def load(self, triplet_idxs):
-        anc_idx, pos_idx, neg_idx = triplet_idxs
-        if self.transform is not None:
-            anc = self.transform(self.dataset[anc_idx][0]).to(self.device)
-            pos = self.transform(self.dataset[pos_idx][0]).to(self.device)
-            neg = self.transform(self.dataset[neg_idx][0]).to(self.device)
-        triplet = (anc, pos, neg)
-
-        return triplet
+        if self.phase == 'train':
+            return len(self.train_labels)
+        else:
+            return len(self.test_labels)
