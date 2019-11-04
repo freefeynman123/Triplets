@@ -1,5 +1,6 @@
 #PDF files
 *.pdf
+papers/
 data/
 creds/*
 .DS_Store

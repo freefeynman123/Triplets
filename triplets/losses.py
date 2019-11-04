@@ -2,10 +2,12 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+
 class TripletSoftLoss(nn.Module):
     """
     Defines loss with softmax values for embeddings distances.
     """
+
     def __init__(self):
         super(TripletSoftLoss, self).__init__()
 
@@ -13,8 +15,10 @@ class TripletSoftLoss(nn.Module):
         distance_positive = (anchor - positive).pow(2).sum(1).pow(0.5)
         distance_negative = (anchor - negative).pow(2).sum(1).pow(0.5)
         soft = nn.Softmax(dim=0)
-        result = soft(torch.cat((distance_positive, distance_negative)))
-        return (result.squeeze() - torch.Tensor((0, 1)).to(result.device)).pow(2).mean()
+        result = soft(torch.stack((distance_positive, distance_negative), dim=0))
+        base = torch.stack((torch.zeros(result.shape[1]), torch.ones(result.shape[1])),
+                           dim=0).to(result.device)
+        return (result.squeeze() - base).pow(2).mean()
 
 
 class TripletLoss(nn.Module):
