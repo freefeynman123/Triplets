@@ -70,7 +70,7 @@ class TripletSVHN(Dataset):
             img1 = self.transform(img1)
             img2 = self.transform(img2)
             img3 = self.transform(img3)
-        return (img1, img2, img3), []
+        return (img1, img2, img3), label1
 
     def __len__(self):
         if self.phase == 'train':
