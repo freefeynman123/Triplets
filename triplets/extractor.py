@@ -25,7 +25,10 @@ class FeatureExtractor:
         :param dataset: Dataset to extract features from.
         :return:
         """
-        model = self.prepare_model()
+        if self.n_remove_layers > 0:
+            model = self.prepare_model()
+        else:
+            model = self.model
         image_codes = np.zeros((len(dataset), self.n_features))
         y_codes = np.zeros(len(dataset))
         for index, data in enumerate(dataset):
