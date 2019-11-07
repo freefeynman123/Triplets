@@ -21,7 +21,11 @@ class TripletSelector:
     def __init__(self):
         pass
 
-    def get_triplets(self, embeddings, labels):
+    def get_triplets(
+            self,
+            embeddings: torch.Tensor,
+            labels: np.ndarray
+    ):
         raise NotImplementedError
 
 
@@ -34,7 +38,11 @@ class AllTripletSelector(TripletSelector):
     def __init__(self):
         super(AllTripletSelector, self).__init__()
 
-    def get_triplets(self, embeddings, labels):
+    def get_triplets(
+            self,
+            embeddings: torch.Tensor,
+            labels: np.ndarray
+    ) -> torch.LongTensor:
         labels = labels.cpu().data.numpy()
         triplets = []
         for label in set(labels):
@@ -82,7 +90,11 @@ class FunctionNegativeTripletSelector(TripletSelector):
         self.margin = margin
         self.negative_selection_fn = negative_selection_fn
 
-    def get_triplets(self, embeddings, labels):
+    def get_triplets(
+            self,
+            embeddings: torch.Tensor,
+            labels: np.ndarray
+    ):
         if self.cpu:
             embeddings = embeddings.cpu()
         if len(embeddings.shape) > 2:

@@ -6,6 +6,8 @@ class BalancedBatchSampler(BatchSampler):
     """
     BatchSampler - from a MNIST-like dataset, samples n_classes and within these classes samples n_samples.
     Returns batches of size n_classes * n_samples
+
+    Taken from https://github.com/adambielski/siamese-triplet
     """
 
     def __init__(
