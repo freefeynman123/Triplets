@@ -1,6 +1,9 @@
-import numpy as np
-from PIL import Image
+from typing import Tuple
 
+import numpy as np
+import torch
+import torchvision
+from PIL import Image
 from torch.utils.data import Dataset
 
 
@@ -12,13 +15,23 @@ class TripletSVHN(Dataset):
     Test: Creates fixed triplets for testing
     """
 
-    def __init__(self, dataset, indices_train, indices_test, transform, phase, seed):
+    def __init__(
+            self,
+            dataset: torch.utils.data.Dataset,
+            indices_train: np.ndarray,
+            indices_test: np.ndarray,
+            transform: torchvision.transforms.Compose,
+            phase: list,
+            seed: int,
+            return_labels: bool = False
+    ) -> None:
         self.dataset = dataset
         self.indices_train = indices_train
         self.indices_test = indices_test
         self.transform = transform
         self.phase = phase
         self.seed = seed
+        self.return_labels = return_labels
 
         if self.phase == 'train':
             self.train_labels = self.dataset.labels[self.indices_train]
@@ -48,7 +61,10 @@ class TripletSVHN(Dataset):
                         for i in range(len(self.test_data))]
             self.test_triplets = triplets
 
-    def __getitem__(self, index):
+    def __getitem__(
+            self,
+            index: int
+    ) -> Tuple[torch.Tensor]:
         if self.phase == 'train':
             img1, label1 = self.train_data[index], self.train_labels[index].item()
             positive_index = index
@@ -70,7 +86,10 @@ class TripletSVHN(Dataset):
             img1 = self.transform(img1)
             img2 = self.transform(img2)
             img3 = self.transform(img3)
-        return (img1, img2, img3), label1
+        if self.return_labels:
+            return (img1, img2, img3), label1
+        else:
+            return (img1, img2, img3), []
 
     def __len__(self):
         if self.phase == 'train':

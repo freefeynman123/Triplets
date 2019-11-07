@@ -16,7 +16,15 @@ class FeatureExtractor:
         self.n_features = n_features
         self.device = device
 
-    def extract_features(self, dataset):
+    def extract_features(
+            self,
+            dataset: torch.utils.data.Dataset
+    ) -> nn.Sequential:
+        """
+        Extracts features from nth layer, counting from the last one.
+        :param dataset: Dataset to extract features from.
+        :return:
+        """
         model = self.prepare_model()
         image_codes = np.zeros((len(dataset), self.n_features))
         y_codes = np.zeros(len(dataset))

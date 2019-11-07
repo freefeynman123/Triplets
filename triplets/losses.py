@@ -1,3 +1,4 @@
+import torch
 import torch.nn.functional as F
 from torch import nn
 
@@ -35,9 +36,6 @@ class TripletLoss(nn.Module):
         distance_negative = (anchor - negative).pow(2).sum(1)  # .pow(.5)
         losses = F.relu(distance_positive - distance_negative + self.margin)
         return losses.mean() if size_average else losses.sum()
-
-
-import torch
 
 
 def _pairwise_distances(embeddings, squared=False):
@@ -132,7 +130,7 @@ def _get_anchor_negative_triplet_mask(labels):
     return ~(labels.unsqueeze(0) == labels.unsqueeze(1))
 
 
-class BatchHardTripletLoss:
+class BatchHardTripletLoss(nn.Module):
     """Build the triplet loss over a batch of embeddings.
     For each anchor, we get the hardest positive and hardest negative to form a triplet.
     Args:
@@ -146,17 +144,18 @@ class BatchHardTripletLoss:
     """
 
     def __init__(self, margin, device='cpu', squared=False):
+        super(BatchHardTripletLoss, self).__init__()
         self.margin = margin
         self.device = device
         self.squared = squared
 
-    def forward(self, labels, embeddings):
+    def forward(self, embeddings, labels):
         # Get the pairwise distance matrix
-        pairwise_dist = _pairwise_distances(embeddings, squared=squared)
+        pairwise_dist = _pairwise_distances(embeddings, squared=self.squared)
 
         # For each anchor, get the hardest positive
         # First, we need to get a mask for every valid positive (they should have same label)
-        mask_anchor_positive = _get_anchor_positive_triplet_mask(labels, device).float()
+        mask_anchor_positive = _get_anchor_positive_triplet_mask(labels, self.device).float()
 
         # We put to 0 any element where (a, p) is not valid (valid if a != p and label(a) == label(p))
         anchor_positive_dist = mask_anchor_positive * pairwise_dist
@@ -176,7 +175,7 @@ class BatchHardTripletLoss:
         hardest_negative_dist, _ = anchor_negative_dist.min(1, keepdim=True)
 
         # Combine biggest d(a, p) and smallest d(a, n) into final triplet loss
-        tl = hardest_positive_dist - hardest_negative_dist + margin
+        tl = hardest_positive_dist - hardest_negative_dist + self.margin
         tl[tl < 0] = 0
         triplet_loss = tl.mean()
 
@@ -198,11 +197,13 @@ class BatchAllTripletLoss(nn.Module):
     Returns:
         triplet_loss: scalar tensor containing the triplet loss
     """
+
     def __init__(self, margin, squared=False):
+        super(BatchAllTripletLoss, self).__init__()
         self.margin = margin
         self.squared = squared
 
-    def forward(self, labels, embeddings):
+    def forward(self, embeddings, labels):
         # Get the pairwise distance matrix
         pairwise_dist = _pairwise_distances(embeddings, squared=self.squared)
 
@@ -215,15 +216,48 @@ class BatchAllTripletLoss(nn.Module):
         # and the 2nd (batch_size, 1, batch_size)
         triplet_loss = anchor_positive_dist - anchor_negative_dist + self.margin
 
+        # Put to zero the invalid triplets
+        # (where label(a) != label(p) or label(n) == label(a) or a == p)
+        mask = _get_triplet_mask(labels)
+        triplet_loss = mask.float() * triplet_loss
+
         # Remove negative losses (i.e. the easy triplets)
         triplet_loss[triplet_loss < 0] = 0
 
         # Count number of positive triplets (where triplet_loss > 0)
         valid_triplets = triplet_loss[triplet_loss > 1e-16]
         num_positive_triplets = valid_triplets.size(0)
+        num_valid_triplets = mask.sum()
 
+        fraction_positive_triplets = num_positive_triplets / (num_valid_triplets.float() + 1e-16)
 
         # Get final mean triplet loss over the positive valid triplets
         triplet_loss = triplet_loss.sum() / (num_positive_triplets + 1e-16)
 
         return triplet_loss
+
+
+class OnlineTripletLoss(nn.Module):
+    """
+    Online Triplets loss
+    Takes a batch of embeddings and corresponding labels.
+    Triplets are generated using triplet_selector object that take embeddings and targets and return indices of
+    triplets
+    """
+
+    def __init__(self, margin, triplet_selector):
+        super(OnlineTripletLoss, self).__init__()
+        self.margin = margin
+        self.triplet_selector = triplet_selector
+
+    def forward(self, embeddings, target):
+        triplets = self.triplet_selector.get_triplets(embeddings, target)
+
+        if embeddings.is_cuda:
+            triplets = triplets.cuda()
+
+        ap_distances = (embeddings[triplets[:, 0]] - embeddings[triplets[:, 1]]).pow(2).sum(1)  # .pow(.5)
+        an_distances = (embeddings[triplets[:, 0]] - embeddings[triplets[:, 2]]).pow(2).sum(1)  # .pow(.5)
+        losses = F.relu(ap_distances - an_distances + self.margin)
+
+        return losses.mean(), len(triplets)

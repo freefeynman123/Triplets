@@ -8,7 +8,12 @@ class BalancedBatchSampler(BatchSampler):
     Returns batches of size n_classes * n_samples
     """
 
-    def __init__(self, labels, n_classes, n_samples):
+    def __init__(
+            self,
+            labels: np.ndarray,
+            n_classes: int,
+            n_samples: int
+    ):
         self.labels = labels
         self.labels_set = list(set(self.labels))
         self.label_to_indices = {label: np.where(self.labels == label)[0]
@@ -22,7 +27,9 @@ class BalancedBatchSampler(BatchSampler):
         self.n_dataset = len(self.labels)
         self.batch_size = self.n_samples * self.n_classes
 
-    def __iter__(self):
+    def __iter__(
+            self
+    ):
         self.count = 0
         while self.count + self.batch_size < self.n_dataset:
             classes = np.random.choice(self.labels_set, self.n_classes, replace=False)
@@ -38,5 +45,7 @@ class BalancedBatchSampler(BatchSampler):
             yield indices
             self.count += self.n_classes * self.n_samples
 
-    def __len__(self):
+    def __len__(
+            self
+    ):
         return self.n_dataset // self.batch_size

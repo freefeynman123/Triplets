@@ -1,7 +1,7 @@
-from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+from matplotlib.lines import Line2D
 
 
 def plot_reduction_results(reduced_features: np.ndarray, hue, label_names: str):
@@ -27,7 +27,7 @@ def plot_grad_flow(named_parameters):
     max_grads = []
     layers = []
     for n, p in named_parameters:
-        if (p.requires_grad) and ("bias" not in n):
+        if p.requires_grad and ("bias" not in n):
             layers.append(n)
             ave_grads.append(p.grad.abs().mean())
             max_grads.append(p.grad.abs().max())
